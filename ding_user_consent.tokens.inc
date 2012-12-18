@@ -23,6 +23,9 @@ function ding_user_consent_token_info() {
   );
 }
 
+/**
+ * Implements hook_tokens
+ */
 function ding_user_consent_tokens($type, $tokens, array $data = array(), array $options = array()) {
   $url_options = array('absolute' => TRUE);
   if (isset($options['language'])) {

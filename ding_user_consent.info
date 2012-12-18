@@ -1,5 +1,3 @@
-; $Id$
-; b14ok 121214
 name = Ding user consent
 description = User privacy module.
 package = Ding!
