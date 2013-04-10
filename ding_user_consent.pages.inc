@@ -50,32 +50,27 @@ function ding_user_consent_form($form, &$form_state) {
 }
 
 /**
- * Form validator.
- */
-function ding_user_consent_form_validate($form, &$form_state) { 
-  // Validate consent
-}
-
-/**
  * Form submit function.
  */
 function ding_user_consent_form_submit($form, &$form_state) {
   global $user;
-  if (!empty($form['#user']))
+  if (!empty($form['#user'])) {
     $account = $form['#user'];
-  else
+  } else {
     $account = $user;
-  
+  }
   $consents = ding_provider_invoke('user_consent', 'info');
   $consent = ding_provider_invoke('user_consent', 'get_consent', $user);
+  $changed = array();
   foreach ($consents as $id => $values) {
     if ($form_state['input'][$id] <> $consent[$id]) {
       if ($form_state['input'][$id]) {
-        $result = ding_provider_invoke('user_consent', 'update', $user, $id, $consent);
+        $result = ding_provider_invoke('user_consent', 'add', $user, $id, $consent);
       }
       else {
         $result = ding_provider_invoke('user_consent', 'remove', $user, $id, $consent);
       }
+      $changed[$id] = ($form_state['input'][$id]) ? TRUE : FALSE;
     }
     if ($form_state['input'][$id] == 0 && $values['required']) {
       $title = variable_get($id . '_title', $values['title']);
@@ -86,6 +81,7 @@ function ding_user_consent_form_submit($form, &$form_state) {
       exit;
     }
   }
+  module_invoke_all('ding_user_consent_changed', $changed);
   if (empty($account->data['consent']) || !isset($account->data['consent'])) {
     $su = clone $account;
     $auth_res['user']['data'] = array('consent' => 1);

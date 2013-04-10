@@ -9,7 +9,7 @@
  */
 function ding_user_consent_ding_provider_user() {
   return array(
-    'user' => array(
+    'user_content' => array(
       'required' => TRUE,
       'install time setup' => TRUE,
     ),
@@ -20,6 +20,8 @@ function ding_user_consent_ding_provider_user() {
  * Implements hook_menu().
  */
 function ding_user_consent_menu() {
+  $items = array();
+  // User consent admin page.
   $items['admin/config/ding/consent'] = array(
     'title' => 'Ding consent',
     'page callback' => 'drupal_get_form',
@@ -27,6 +29,7 @@ function ding_user_consent_menu() {
     'access arguments' => array('administer ding provider'),
     'file' => 'ding_user_consent.admin.inc',
   );
+  // User consent form page.
   $items['user/%user/consent'] = array(
     'title' => 'Give consent',
     'page callback' => 'drupal_get_form',
@@ -45,7 +48,7 @@ function ding_user_consent_menu() {
  */
 function ding_user_consent_page() {
   global $user;
-  if ($user->uid > 0) {
+  if (user_is_logged_in()) {
     return 'user/' . $user->uid . '/consent';
   }
   return 'user/login';
@@ -53,70 +56,157 @@ function ding_user_consent_page() {
 
 /**
  * Return the users consent if such exists.
+ * Should the censent be missing and have the required flag, the DingProviderConsentException is thrown.
+ *
+ * @param int $consent_id
+ *   The id of the consent to check for, if null the complete list of consents the user has given will be returned if any.
+ * @param user $account
+ *   The user account to check consent for, if null the current logged in user is used.
+ *
+ * @return
+ *   This function returns either the specific consent as a 1 or 0, or the array of given consents.
  */
-function ding_user_consent_get_consent($consent_id = NULL, $account = NULL) {
-  global $user;
-  if (is_null($account))
+function ding_user_consent_get_consent($consent_id = NULL, $account = FALSE) {
+  // Set the account to the current user if it is not provided.
+  if (!$account) {
+    global $user;
     $account = $user;
-  
+  }
+  // Get consent info
   $consents = ding_provider_invoke('user_consent', 'info');
-  $consent = ding_provider_invoke('user_consent', 'get_consent', $account);
   if (!is_null($consent_id)) {
+    // Search for a specific consent type.
+    // Get the user specific consent.
+    $consent = ding_provider_invoke('user_consent', 'get_consent', $account);
+    // Throw a DingProviderConsentException if the user has not given consent yet or if consent is required and the user has denied consent.
     if (empty($account->data['consent']) || isset($consent[$consent_id]) && $consents[$consent_id]['required'] && !$consent[$consent_id]) {
       throw new DingProviderConsentException;
     }
+    // Return the value if it is set.
     if (!empty($consent[$consent_id])) {
       return $consent[$consent_id];
     }
   }
   else {
+    // Throw a DingProviderConsentException if the user has not received a consent notice yet.
     if (empty($consent_id) && empty($account->data['consent'])) {
       throw new DingProviderConsentException;
     }
+    // Get user specific consent.
+    $consent = ding_provider_invoke('user_consent', 'get_consent', $account);
     foreach ($consents as $id => $values) {
+      // Throw a DingProviderConsentException if any of the consent types is missing from the users consent list.
       if (!isset($consent[$id])) {
         throw new DingProviderConsentException;
       }
     }
+    // Return consent list.
     return $consent;
   }
+  // If all else fails throw a DingProviderConsentException, since we would like user to give consent.
   throw new DingProviderConsentException;
 }
 
-// Example on hook into user form with consent.
+/**
+ * Check if the users has given consent or not.
+ *
+ * @param int $consent_id
+ *   The id of the consent to check for, if null the complete list of consents the user has given will be returned if any.
+ * @param user $account
+ *   The user account to check consent for, if null the current logged in user is used.
+ *
+ * @return bool
+ *   Returns TRUE is the user has given consent and FALSE if no consent has been given or is the consent is revoked.
+ */
+function ding_user_consent_has_consent($consent_id = NULL, $account = FALSE) {
+  // Set the account to the current user if it is not provided.
+  if (!$account) {
+    global $user;
+    $account = $user;
+  }
+  // Check if the user is a user with valid credentials
+  if(ding_user_is_provider_user($account)) {
+    try {
+      // Get consent info
+      $consents = ding_provider_invoke('user_consent', 'info');
+      if (!is_null($consent_id)) {
+        // Search for a specific consent type.
+        // Get the user specific consent.
+        $consent = ding_provider_invoke('user_consent', 'get_consent', $account);
+        // Return false if the user has not given consent yet or if consent is required and the user has denied consent.
+        if (empty($account->data['consent']) || isset($consent[$consent_id]) && $consents[$consent_id]['required'] && !$consent[$consent_id]) {
+          return FALSE;
+        }
+        // Return true if the consent id is set.
+        if (!empty($consent[$consent_id])) {
+          return TRUE;
+        }
+      }
+      else {
+        // Return false if the user has not received a consent notice yet.
+        if (empty($consent_id) && empty($account->data['consent'])) {
+          return FALSE;
+        }
+        // Get user specific consent.
+        $consent = ding_provider_invoke('user_consent', 'get_consent', $account);
+        // Return false if any of the consent types is missing from the users consent list.
+        foreach ($consents as $id => $values) {
+          if (!isset($consent[$id])) {
+            return FALSE;
+          }
+        }
+        // Return true
+        return TRUE;
+      }
+    } catch (Exception $e) {
+      // In case of an exception return false
+      return FALSE;
+    }
+  } else {
+    // Default to false
+    return FALSE;
+  }
+}
+
+/**
+ * Attach consent for to user profile form
+ */
 function ding_user_consent_form_user_profile_form_alter(&$form, &$form_state, $form_id) {
   $account = $form['#user'];
-  if (ding_user_is_provider_user($account)) {
+  // Ensure that the user related to this profile form is a valid user and 
+  if (ding_user_is_provider_user($account) && $account->uid == $GLOBALS['user']->uid) {
     $consents = ding_provider_invoke('user_consent', 'info');
-    $form['user_consent'] = array(
-      '#type' => 'fieldset', 
-      '#title' => t('Legal consent'),
-      '#collapsible' => FALSE,
-      '#collapsed' => FALSE,
-    );
-    $consent = ding_provider_invoke('user_consent', 'get_consent', $account);
-    foreach ($consents as $id => $values) {
-      if (!isset($values['title']))
-        $values['title'] = t('Legal consent');
-      
-      $form['user_consent'][$id] = array(
-        '#type' => 'checkbox',
-        '#title' => check_plain($values['title']),
-        '#default_value' => !empty($consent[$id]) ? $consent[$id] : 0,
+    if($consents) {
+      $form['user_consent'] = array(
+        '#type' => 'fieldset', 
+        '#title' => t('Legal consent'),
+        '#collapsible' => FALSE,
+        '#collapsed' => FALSE,
       );
-      $form['user_consent'][$id]['#description'] = (!empty($values['description'])) ? check_plain($values['description']) : t('Legal consent');
-      if (variable_get($id . '_description_link', '')) {
-        $form['user_consent'][$id]['#description'] = format_string(
-          $form['user_consent'][$id]['#description'] . ' !br !url', 
-          array(
-            '!br' => '<br>', 
-            '!url' =>  l(t('Read more'), variable_get($id . '_description_link', ''))
-          )
+      $consent = ding_provider_invoke('user_consent', 'get_consent', $account);
+      foreach ($consents as $id => $values) {
+        if (!isset($values['title'])) {
+          $values['title'] = t('Legal consent');
+        }
+        $form['user_consent'][$id] = array(
+          '#type' => 'checkbox',
+          '#title' => check_plain($values['title']),
+          '#default_value' => !empty($consent[$id]) ? $consent[$id] : 0,
         );
+        $form['user_consent'][$id]['#description'] = (!empty($values['description'])) ? check_plain($values['description']) : '';
+        if (variable_get($id . '_description_link', '')) {
+          $form['user_consent'][$id]['#description'] = format_string(
+            $form['user_consent'][$id]['#description'] . ' !br !url', 
+            array(
+              '!br' => '<br>', 
+              '!url' =>  l(t('Read more'), variable_get($id . '_description_link', ''))
+            )
+          );
+        }
       }
+      $form['#validate'][] = 'ding_user_consent_form_user_profile_form_validate';
+      $form['#submit'][] = 'ding_user_consent_form_user_profile_form_submit';
     }
-    $form['#validate'][] = 'ding_user_consent_form_user_profile_form_validate';
-    $form['#submit'][] = 'ding_user_consent_form_user_profile_form_submit';
   }
 }
 
@@ -126,6 +216,9 @@ function ding_user_consent_form_user_profile_form_alter(&$form, &$form_state, $f
 function ding_user_consent_form_user_profile_form_validate($form, &$form_state) {
   $user = $form_state['user'];
   if (empty($user->data['consent'])) {
+    // If this is the first time the user has been presented with the consent form no data is stored in the data['consent']
+    // and we therefore ensure that data['consent'] is set to prevent the consent form from reappearing when the user performs
+    // actions that would impacted consent, unless the functionality requires consent.
     $form_state['input']['data']['consent'] = 1;
     $form_state['values']['data']['consent'] = 1;
   }
@@ -143,7 +236,7 @@ function ding_user_consent_form_user_profile_form_submit($form_id, &$form_state)
   foreach ($consents as $id => $values) {
     if ($form_state['input'][$id] <> $consent[$id]) {
       if ($form_state['input'][$id]) {
-        $result = ding_provider_invoke('user_consent', 'update', $user, $id, $consent);
+        $result = ding_provider_invoke('user_consent', 'add', $user, $id, $consent);
       }
       else {
         $result = ding_provider_invoke('user_consent', 'remove', $user, $id, $consent);
@@ -151,23 +244,7 @@ function ding_user_consent_form_user_profile_form_submit($form_id, &$form_state)
       $changed[$id] = ($form_state['input'][$id]) ? TRUE : FALSE;
     }
   }
-  module_invoke_all('consent_changed', $changed);
-}
-/**
- * Implements hook_user_presave
- */
-function ding_user_consent_user_presave(&$edit, $account, $category) {
-  //unset($edit['data']['consent']);
-}
-/**
- * Implements hook_forms
- */
-function ding_user_consent_forms($form_id, $args) {
-  return array(
-    'ding_user_consent_quick_accept' => array(
-      'callback' => 'ding_user_consent_quick_accept_builder',
-    ),
-  );
+  module_invoke_all('ding_user_consent_changed', $changed);
 }
 
 /**
@@ -176,11 +253,8 @@ function ding_user_consent_forms($form_id, $args) {
 function ding_user_consent_form_alter(&$form, &$form_state, $form_id) {
   switch ($form_id) {
     case 'ding_reservation_reserve_form':
-      //$form['#validate'][] = 'ding_user_consent_form_process';
       $form['#attributes']['class'][] = 'link-form';
-      $form['#attached']['css'] = array(
-        drupal_get_path('module', 'ding_user_consent') . '/ding_user_consent.css',
-      );
+      //$form['#validate'][] = 'ding_user_consent_form_process';
       break;
       // Falling through on purpose.
     case 'ding_user_consent_form':
@@ -195,99 +269,10 @@ function ding_user_consent_form_alter(&$form, &$form_state, $form_id) {
 }
 
 /**
- * Validate consent before reservations are made.
+ * Validate reserve form
  */
 function ding_user_consent_form_process($form, &$form_state) {
   ding_user_consent_get_consent();
-}
-
-/**
- * ding_user_consent_quick_accept form builder
- */
-function ding_user_consent_quick_accept_builder($form, &$form_state) {
-  global $user;
-  $account = (isset($form_state['user'])) ? $form_state['user'] : NULL;
-  if (!isset($account))
-    $account = $user;
-  
-  if (ding_user_is_provider_user($account)) {
-    try {
-      $consent = ding_user_consent_get_consent('loan_history_store');
-    }
-    catch (Exception $e) {
-      $consent = NULL;
-    }
-    if (!$consent) {
-      $html_id = drupal_html_id('ding-user-consent-submit');
-      
-      $form['ding_user_consent_submit'] = array(
-        '#type' => 'submit',
-        '#value' => t('Allow storage of loans and other personal data'),
-        '#description' => t(''),
-        '#attributes' => array('id' => $html_id),
-        '#ajax' => array(
-          'callback' => 'ding_user_consent_quick_accept_callback',
-          'wrapper' => $html_id,
-          'method' => 'replace',
-          'effect' => 'fade',
-        ),
-      );
-      if (!isset($form_state['hide_description']) || !$form_state['hide_description']) {
-        $description = variable_get('loan_history_store_description_token', '');
-        $description = (is_array($description)) ? $description['value'] : $description;
-        $form['ding_user_consent'] = array(
-          '#type' => 'item',
-          '#markup' => $description,
-        );
-      }
-    }
-    else {
-      $description = variable_get('loan_history_store_description_token_given', '');
-      $description = (is_array($description)) ? $description['value'] : $description;
-      $form['ding_user_consent'] = array(
-        '#type' => 'item',
-        '#markup' => '<span class="consent-given-icon"></span>' . token_replace($description, array('user' => $account)),
-      );
-    }
-  }
-  else {
-    $form['ding_user_consent'] = array(
-      '#type' => 'item',
-      '#title' => t(''),
-      '#markup' => t('Please !login as a user of the library to use this function', array('!login' => l(t('login'), 'user'))),
-    );
-  }
-  
-  return $form;
-}
-
-/**
- * Submit function for ding_user_consent_quick_accept form
- */
-function ding_user_consent_quick_accept_submit($form, &$form_state) {
-  global $user;
-  if (!empty($form['#user']))
-    $account = $form['#user'];
-  else
-    $account = $user;
-  
-  $result = ding_provider_invoke('user_consent', 'update', $account, 'loan_history_store', 1);
-  if ($result) {
-    drupal_set_message(t('Thank you for allowing us to store your personal data.'));
-  }
-}
-
-/**
- * Submit function for ding_user_consent_quick_accept form
- */
-function ding_user_consent_quick_accept_callback($form, $form_state) {
-  $description = variable_get('loan_history_store_description_token_given', '');
-  $description = (is_array($description)) ? $description['value'] : $description;
-  $return['ding_user_consent'] = array(
-    '#type' => 'item',
-    '#markup' => '<span class="consent-given-icon"></span>' . $description,
-  );
-  return $return;
 }
 
 /**

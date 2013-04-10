@@ -17,7 +17,7 @@
 function ding_user_consent_admin_form($form, &$form_state) {
   $consents = ding_provider_invoke('user_consent', 'info');
   foreach ($consents as $id => $values) {
-    $form['content'][$id] = array(
+    $form[$id] = array(
       '#type' => 'fieldset', 
       '#title' => t('Consent'),
       '#collapsible' => TRUE, 
@@ -25,20 +25,20 @@ function ding_user_consent_admin_form($form, &$form_state) {
     );
     
     // Consent description link
-    $form['content'][$id][$id . '_description_link'] = array(
+    $form[$id][$id . '_description_link'] = array(
       '#type' => 'textfield', 
       '#title' => t('Link to consent description'),
       '#description' => t('Write a link to the page containing a description of user consent. Use wither the format node/$nid or a path alias.'), 
       '#default_value' => variable_get($id . '_description_link', ''),
     );
     // First time message
-    $form['content'][$id]['first_time'] = array(
+    $form[$id]['first_time'] = array(
       '#type' => 'fieldset', 
       '#title' => t('First time'),
       '#collapsible' => TRUE, 
       '#collapsed' => FALSE,
     );
-    $form['content'][$id]['first_time'][$id . '_title_first_time'] = array(
+    $form[$id]['first_time'][$id . '_title_first_time'] = array(
       '#type' => 'textfield',
       '#title' => t('First login message title'),
       '#description' => t('Write a title for the message which a first time user will receive'),
@@ -46,7 +46,7 @@ function ding_user_consent_admin_form($form, &$form_state) {
     );
     $description = variable_get($id . '_description_first_time', '');
     $description = (is_array($description)) ? $description['value'] : $description;
-    $form['content'][$id]['first_time'][$id . '_description_first_time'] = array(
+    $form[$id]['first_time'][$id . '_description_first_time'] = array(
       '#type' => 'text_format',
       '#title' => t('First login message description'),
       '#description' => t('Write a message for a first time user'),
@@ -55,13 +55,13 @@ function ding_user_consent_admin_form($form, &$form_state) {
     );
     
     // User consent request message
-    $form['content'][$id]['request'] = array(
+    $form[$id]['request'] = array(
       '#type' => 'fieldset', 
       '#title' => t('Request'),
       '#collapsible' => TRUE, 
       '#collapsed' => FALSE,
     );
-    $form['content'][$id]['request'][$id . '_title'] = array(
+    $form[$id]['request'][$id . '_title'] = array(
       '#type' => 'textfield',
       '#title' => t('Consent title'),
       '#description' => t('Write a title for the message which the user will see when requested to give consent'),
@@ -69,7 +69,7 @@ function ding_user_consent_admin_form($form, &$form_state) {
     );
     $description = variable_get($id . '_description', $values['description']);
     $description = (is_array($description)) ? $description['value'] : $description;
-    $form['content'][$id]['request'][$id . '_description'] = array(
+    $form[$id]['request'][$id . '_description'] = array(
       '#type' => 'text_format',
       '#title' => t('Consent description'),
       '#description' => t('Write a message for the user when requested to give consent'),
@@ -77,7 +77,7 @@ function ding_user_consent_admin_form($form, &$form_state) {
       '#format' => 'ding_wysiwyg',
     );
     // Token message
-    $form['content'][$id]['token'] = array(
+    $form[$id]['token'] = array(
       '#type' => 'fieldset', 
       '#title' => t('Token'),
       '#collapsible' => TRUE, 
@@ -85,7 +85,7 @@ function ding_user_consent_admin_form($form, &$form_state) {
     );
     $description = variable_get($id . '_description_token', $values['description']);
     $description = (is_array($description)) ? $description['value'] : $description;
-    $form['content'][$id]['token'][$id . '_description_token'] = array(
+    $form[$id]['token'][$id . '_description_token'] = array(
       '#type' => 'text_format',
       '#title' => t('Consent description'),
       '#description' => t('Write a message to display in the form which is inserted into a text area'),
@@ -94,7 +94,7 @@ function ding_user_consent_admin_form($form, &$form_state) {
     );
     $description = variable_get($id . '_description_token_given', $values['description']);
     $description = (is_array($description)) ? $description['value'] : $description;
-    $form['content'][$id]['token'][$id . '_description_token_given'] = array(
+    $form[$id]['token'][$id . '_description_token_given'] = array(
       '#type' => 'text_format',
       '#title' => t('Consent description'),
       '#description' => t('Write a message to display in the form which is inserted into a text area but the user has already given consent'),
